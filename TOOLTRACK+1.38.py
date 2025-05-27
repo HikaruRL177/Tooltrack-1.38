@@ -7201,6 +7201,7 @@ class EstadoComentarioDialog(QtWidgets.QDialog):
         return self.estado_combo.currentText(), self.comentario_edit.text().strip()
 
 # --- Clase Window5Page ---
+# --- Clase Window5Page ---
 class Window5Page(QtWidgets.QWidget):
     def __init__(self, user_alias, parent=None):
         super().__init__(parent)
@@ -7974,6 +7975,25 @@ class Window5Page(QtWidgets.QWidget):
         nomenclatura = str(self.current_item.get("NOMENCLATURA", "")).strip()
         job = str(self.current_item.get("JOB", "")).strip()
 
+        # --- Start of new code ---
+        tipo_herramental_item = "" # Default value
+        try:
+            df_db = pd.read_csv(DB_PATH, encoding="utf-8-sig")
+            df_db["NOMENCLATURA"] = df_db["NOMENCLATURA"].astype(str).str.strip()
+            # It's often good to compare in a case-insensitive manner if data can be inconsistent
+            registro = df_db[df_db["NOMENCLATURA"].str.lower() == nomenclatura.lower()]
+            if not registro.empty:
+                if "TIPO DE HERRAMENTAL" in registro.columns:
+                    tipo_herramental_item = str(registro.iloc[0]["TIPO DE HERRAMENTAL"]).strip()
+                    print(f"[DEBUG] TIPO DE HERRAMENTAL for {nomenclatura}: {tipo_herramental_item}")
+                else:
+                    print(f"[WARN] Columna 'TIPO DE HERRAMENTAL' no encontrada en {DB_PATH}.")
+            else:
+                print(f"[WARN] Nomenclatura {nomenclatura} no encontrada en {DB_PATH}.")
+        except Exception as e:
+            print(f"[ERROR] Al leer/procesar TIPO DE HERRAMENTAL de {DB_PATH}: {e}")
+        # --- End of new code ---
+
         # Bloquear si el ítem se encuentra en "AREA ROJA" o "SCRAP"
         if current_status in ["area roja", "scrap"]:
             QtWidgets.QMessageBox.warning(
@@ -8034,14 +8054,24 @@ class Window5Page(QtWidgets.QWidget):
         # En el nuevo flujo, al ingresar el herramental se asigna el estado "limpieza"
         if effective_status == "out":
             now = datetime.now().strftime("%d/%m/%y %H:%M")
-            self.df.at[self.current_item_idx, "STATUS_INOUT"] = "limpieza"
-            self.df.at[self.current_item_idx, "LAST_OUT"] = now
+            # --- MODIFIED LOGIC START ---
+            if tipo_herramental_item.lower() in ["stencil", "plato router", "squegee"]:
+                self.df.at[self.current_item_idx, "STATUS_INOUT"] = "limpieza"
+            else:
+                self.df.at[self.current_item_idx, "STATUS_INOUT"] = "in"
+            # --- MODIFIED LOGIC END ---
+                self.df.at[self.current_item_idx, "LAST_OUT"] = now
         else:
             QtWidgets.QMessageBox.information(self, "Aviso", "Herramental sin registro de surtido, comentalo")
             prefill_comment = "Herramental sin registro de surtido"
             now = datetime.now().strftime("%d/%m/%y %H:%M")
             self.df.at[self.current_item_idx, "LAST_OUT"] = now
-            self.df.at[self.current_item_idx, "STATUS_INOUT"] = "limpieza"
+            # --- MODIFIED LOGIC START ---
+            if tipo_herramental_item.lower() in ["stencil", "plato router"]:
+                self.df.at[self.current_item_idx, "STATUS_INOUT"] = "limpieza"
+            else:
+                self.df.at[self.current_item_idx, "STATUS_INOUT"] = "in"
+            # --- MODIFIED LOGIC END ---
 
         # Reiniciar el contenido de USER_OUT en la base de datos
         self.df["USER_OUT"] = self.df["USER_OUT"].fillna("").astype(str)
